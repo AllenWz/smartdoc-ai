@@ -34,10 +34,12 @@ Resources:
     Properties:
       UserPoolName: !Sub "${AppName}-${Environment}-user-pool"
       AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: true #Only allow admin to created accounts and signup requestes
+        AllowAdminCreateUserOnly: false
         InviteMessageTemplate:
-          EmailSubject: "Welcome to SmartDoc AI - Account Provisioned"
-          EmailMessage: "Hello, your SmartDoc AI account has been created. Your temporary password is: {####}. Please log in to complete your password setup."
+          EmailSubject: "Welcome to SmartDoc AI - Your Temporary Password"
+          # Ensure BOTH {username} and {####} are present in the body:
+          EmailMessage: "Welcome to SmartDoc AI! Your username is {username} and your temporary password is {####}."
+          SMSMessage: "Welcome to SmartDoc AI! Your username is {username} and your temporary password is {####}."
       AutoVerifiedAttributes:
         - email
       UsernameAttributes:
