@@ -10,6 +10,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Deploy SAM Stack
+        run: |
+          cd infra
+          sam deploy \
+            --template-file template.yaml \
+            --stack-name smartdoc-ai-dev \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+            
       - name: Checkout Code
         uses: actions/checkout@v4
 
