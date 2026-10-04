@@ -9,5 +9,13 @@ aws:
   region: ${AWS_REGION:us-east-1}
   sqs:
     queue-url: ${SQS_QUEUE_URL:https://sqs.us-east-1.amazonaws.com/123456789012/smartdoc-ai-dev-doc-pipeline.fifo}
+  s3:
+    bucket-name: ${S3_BUCKET_NAME:smartdoc-ai-dev-docs}
   dynamodb:
     table-name: ${DYNAMODB_TABLE_NAME:smartdoc-ai-dev-doc-status}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
