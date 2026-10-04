@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: SmartDoc AI - Core Infrastructure and Event-Driven Stack
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment stage name
+
+  AppName:
+    Type: String
+    Default: smartdoc-ai
+    Description: Application base name
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: nodejs20.x
+    Environment:
+      Variables:
+        ENV: !Ref Environment
+        LOG_LEVEL: INFO
+
+Resources:
+
+  # =========================================================================
+  # 1. AUTHENTICATION (Amazon Cognito)
+  # =========================================================================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AppName}-${Environment}-user-pool"
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true #Only allow admin to created accounts and signup requestes
+        InviteMessageTemplate:
+          EmailSubject: "Welcome to SmartDoc AI - Account Provisioned"
+          EmailMessage: "Hello, your SmartDoc AI account has been created. Your temporary password is: {####}. Please log in to complete your password setup."
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: department
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AppName}-${Environment}-client"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+
+  # =========================================================================
+  # 2. STORAGE (Amazon S3)
+  # =========================================================================
+  DocumentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AppName}-${Environment}-docs-${AWS::AccountId}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, HEAD]
+            AllowedOrigins: ['*'] # Note: Change to CloudFront domain in production
+            MaxAge: 3000
+
+  # =========================================================================
+  # 3. DATABASE (Amazon DynamoDB with Streams)
+  # =========================================================================
+  DocumentStatusTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AppName}-${Environment}-doc-status"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S # String
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH # Partition Key
+        - AttributeName: SK
+          KeyType: RANGE # Sort Key
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # =========================================================================
+  # 4. QUEUEING (Amazon SQS FIFO + DLQ)
+  # =========================================================================
+  ProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AppName}-${Environment}-doc-pipeline-dlq.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AppName}-${Environment}-doc-pipeline.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 180 # 6x expected processing time for Lambda/Worker
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ProcessingDLQ.Arn
+        maxReceiveCount: 3
+
+  # =========================================================================
+  # 5. LAMBDA FUNCTIONS & TRIGGERS
+  # =========================================================================
+  # Triggered by S3 upload -> Writes to DynamoDB & Pushes to SQS FIFO
+  S3UploadTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-${Environment}-s3-upload-trigger"
+      CodeUri: ../backend/lambda-functions/s3-upload-trigger/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DocumentStatusTable
+          QUEUE_URL: !Ref ProcessingQueue
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DocumentStatusTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ProcessingQueue.QueueName
+        - S3ReadPolicy:
+            BucketName: !Sub "${AppName}-${Environment}-docs-${AWS::AccountId}"
+      Events:
+        S3FileUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref DocumentBucket
+            Events: s3:ObjectCreated:*
+
+  # Triggered by DynamoDB Stream -> Syncs live updates to Redis
+  DdbStreamCacheSyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-${Environment}-ddb-stream-sync"
+      CodeUri: ../backend/lambda-functions/ddb-stream-cache-sync/
+      Handler: index.handler
+      Events:
+        StreamEvent:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt DocumentStatusTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+
+# =========================================================================
+# 6. OUTPUTS
+# =========================================================================
+Outputs:
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub "${AppName}-${Environment}-UserPoolId"
+
+  CognitoClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub "${AppName}-${Environment}-ClientId"
+
+  S3BucketName:
+    Description: Document Storage S3 Bucket Name
+    Value: !Ref DocumentBucket
+
+  SQSQueueUrl:
+    Description: SQS FIFO Queue URL
+    Value: !Ref ProcessingQueue
+
+  DynamoDBTableName:
+    Description: DynamoDB Document Status Table Name
+    Value: !Ref DocumentStatusTable

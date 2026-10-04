@@ -1,0 +1,25 @@
+server:
+    port: 8080
+
+    spring:
+    application:
+        name: api-service
+    security:
+        oauth2:
+        resourceserver:
+            jwt:
+            # Issuer URL dynamically wired to your Cognito User Pool
+            issuer-uri: https://cognito-idp.${AWS_REGION:us-east-1}.amazonaws.com/${COGNITO_USER_POOL_ID:us-east-1_xxxxxxxxx}
+
+    aws:
+    region: ${AWS_REGION:us-east-1}
+    s3:
+        bucket-name: ${S3_BUCKET_NAME:smartdoc-ai-dev-docs}
+    dynamodb:
+        table-name: ${DYNAMODB_TABLE_NAME:smartdoc-ai-dev-doc-status}
+
+    management:
+    endpoints:
+        web:
+        exposure:
+            include: health,info

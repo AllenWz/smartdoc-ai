@@ -1,0 +1,50 @@
+name: Test
+on:
+  push:
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm install
+      - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-service, worker-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn -B test
+        working-directory: backend/${{ matrix.service }}
+      - run: mvn -B verify
+        working-directory: backend/${{ matrix.service }}
+
+  lambda:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function: [s3-upload-trigger, ddb-stream-cache-sync]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+        working-directory: backend/lambda-functions/${{ matrix.function }}

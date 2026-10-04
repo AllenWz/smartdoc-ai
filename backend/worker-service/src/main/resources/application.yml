@@ -1,0 +1,13 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: worker-service
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  sqs:
+    queue-url: ${SQS_QUEUE_URL:https://sqs.us-east-1.amazonaws.com/123456789012/smartdoc-ai-dev-doc-pipeline.fifo}
+  dynamodb:
+    table-name: ${DYNAMODB_TABLE_NAME:smartdoc-ai-dev-doc-status}

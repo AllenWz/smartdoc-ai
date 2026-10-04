@@ -1,0 +1,33 @@
+name: Teardown / Destroy AWS Resources
+
+on:
+  workflow_dispatch: # Manual trigger button in GitHub Actions UI
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Empty S3 Bucket Contents
+        run: |
+          chmod +x .github/scripts/cleanup-s3.sh
+          ./.github/scripts/cleanup-s3.sh
+
+      - name: SAM Delete Stack
+        run: |
+          sam delete \
+            --stack-name smartdoc-ai-dev \
+            --no-prompts \
+            --region us-east-1

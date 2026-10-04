@@ -1,0 +1,12 @@
+{
+  "UploadTriggerFunction": {
+    "DOCUMENTS_TABLE": "smartdoc-documents-local",
+    "PROCESSING_QUEUE_URL": "http://localhost:4566/000000000000/smartdoc-processing-local",
+    "STAGE": "local"
+  },
+  "CacheSyncFunction": {
+    "DOCUMENTS_TABLE": "smartdoc-documents-local",
+    "STAGE": "local",
+    "REDIS_URL": "redis://localhost:6379"
+  }
+}
